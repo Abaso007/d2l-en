@@ -1,4 +1,4 @@
-DATA_HUB = dict()
+DATA_HUB = {}
 DATA_URL = 'http://d2l-data.s3-accelerate.amazonaws.com/'
 
 import numpy as np
@@ -495,9 +495,7 @@ def try_gpu(i=0):
     """Return gpu(i) if exists, otherwise return cpu().
 
     Defined in :numref:`sec_use_gpu`"""
-    if num_gpus() >= i + 1:
-        return gpu(i)
-    return cpu()
+    return gpu(i) if num_gpus() >= i + 1 else cpu()
 
 def try_all_gpus():
     """Return all available GPUs, or [cpu(),] if no GPU exists.
@@ -1034,18 +1032,17 @@ def masked_softmax(X, valid_lens):
 
     if valid_lens is None:
         return tf.nn.softmax(X, axis=-1)
-    else:
-        shape = X.shape
-        if len(valid_lens.shape) == 1:
-            valid_lens = tf.repeat(valid_lens, repeats=shape[1])
-
-        else:
-            valid_lens = tf.reshape(valid_lens, shape=-1)
-        # On the last axis, replace masked elements with a very large negative
-        # value, whose exponentiation outputs 0
-        X = _sequence_mask(tf.reshape(X, shape=(-1, shape[-1])), valid_lens,
-                           value=-1e6)
-        return tf.nn.softmax(tf.reshape(X, shape=shape), axis=-1)
+    shape = X.shape
+    valid_lens = (
+        tf.repeat(valid_lens, repeats=shape[1])
+        if len(valid_lens.shape) == 1
+        else tf.reshape(valid_lens, shape=-1)
+    )
+    # On the last axis, replace masked elements with a very large negative
+    # value, whose exponentiation outputs 0
+    X = _sequence_mask(tf.reshape(X, shape=(-1, shape[-1])), valid_lens,
+                       value=-1e6)
+    return tf.nn.softmax(tf.reshape(X, shape=shape), axis=-1)
 
 class DotProductAttention(tf.keras.layers.Layer):
     """Scaled dot product attention.
@@ -1704,10 +1701,10 @@ def download(url, folder='../data', sha1_hash=None):
         sha1 = hashlib.sha1()
         with open(fname, 'rb') as f:
             while True:
-                data = f.read(1048576)
-                if not data:
+                if data := f.read(1048576):
+                    sha1.update(data)
+                else:
                     break
-                sha1.update(data)
         if sha1.hexdigest() == sha1_hash:
             return fname
     # Download
@@ -1897,8 +1894,7 @@ class MaskedSoftmaxCELoss(tf.keras.losses.Loss):
         label_one_hot = tf.one_hot(label, depth=pred.shape[-1])
         unweighted_loss = tf.keras.losses.CategoricalCrossentropy(
             from_logits=True, reduction='none')(label_one_hot, pred)
-        weighted_loss = tf.reduce_mean((unweighted_loss*weights), axis=1)
-        return weighted_loss
+        return tf.reduce_mean((unweighted_loss*weights), axis=1)
 
 def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
     """Train a model for sequence to sequence.
@@ -1911,7 +1907,7 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
         timer = d2l.Timer()
         metric = d2l.Accumulator(2)  # Sum of training loss, no. of tokens
         for batch in data_iter:
-            X, X_valid_len, Y, Y_valid_len = [x for x in batch]
+            X, X_valid_len, Y, Y_valid_len = list(batch)
             bos = tf.reshape(tf.constant([tgt_vocab['<bos>']] * Y.shape[0]),
                              shape=(-1, 1))
             dec_input = tf.concat([bos, Y[:, :-1]], 1)  # Teacher forcing

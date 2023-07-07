@@ -1,4 +1,4 @@
-DATA_HUB = dict()
+DATA_HUB = {}
 DATA_URL = 'http://d2l-data.s3-accelerate.amazonaws.com/'
 
 import jax
@@ -248,8 +248,7 @@ class Module(d2l.nn_Module, d2l.HyperParameters):
 
     def apply_init(self, dummy_input, key):
         """Defined in :numref:`sec_lazy_init`"""
-        params = self.init(key, *dummy_input)  # dummy_input tuple unpacked
-        return params
+        return self.init(key, *dummy_input)
 
 class DataModule(d2l.HyperParameters):
     """The base class of data.
@@ -302,10 +301,7 @@ class Trainer(d2l.HyperParameters):
         self.prepare_model(model)
         self.optim = model.configure_optimizers()
 
-        if key is None:
-            root_key = d2l.get_key()
-        else:
-            root_key = key
+        root_key = d2l.get_key() if key is None else key
         params_key, dropout_key = jax.random.split(root_key)
         key = {'params': params_key, 'dropout': dropout_key}
 
@@ -319,9 +315,6 @@ class Trainer(d2l.HyperParameters):
         else:
             batch_stats = {}
 
-        # Flax uses optax under the hood for a single state obj TrainState.
-        # More will be discussed later in the dropout and batch
-        # normalization section
         class TrainState(train_state.TrainState):
             batch_stats: Any
             dropout_rng: jax.random.PRNGKeyArray
@@ -659,9 +652,7 @@ def try_gpu(i=0):
     """Return gpu(i) if exists, otherwise return cpu().
 
     Defined in :numref:`sec_use_gpu`"""
-    if num_gpus() >= i + 1:
-        return gpu(i)
-    return cpu()
+    return gpu(i) if num_gpus() >= i + 1 else cpu()
 
 def try_all_gpus():
     """Return all available GPUs, or [cpu(),] if no GPU exists.
@@ -1251,16 +1242,16 @@ def masked_softmax(X, valid_lens):
 
     if valid_lens is None:
         return nn.softmax(X, axis=-1)
-    else:
-        shape = X.shape
-        if valid_lens.ndim == 1:
-            valid_lens = jnp.repeat(valid_lens, shape[1])
-        else:
-            valid_lens = valid_lens.reshape(-1)
-        # On the last axis, replace masked elements with a very large negative
-        # value, whose exponentiation outputs 0
-        X = _sequence_mask(X.reshape(-1, shape[-1]), valid_lens, value=-1e6)
-        return nn.softmax(X.reshape(shape), axis=-1)
+    shape = X.shape
+    valid_lens = (
+        jnp.repeat(valid_lens, shape[1])
+        if valid_lens.ndim == 1
+        else valid_lens.reshape(-1)
+    )
+    # On the last axis, replace masked elements with a very large negative
+    # value, whose exponentiation outputs 0
+    X = _sequence_mask(X.reshape(-1, shape[-1]), valid_lens, value=-1e6)
+    return nn.softmax(X.reshape(shape), axis=-1)
 
 class DotProductAttention(nn.Module):
     """Scaled dot product attention.
@@ -1513,10 +1504,10 @@ def download(url, folder='../data', sha1_hash=None):
         sha1 = hashlib.sha1()
         with open(fname, 'rb') as f:
             while True:
-                data = f.read(1048576)
-                if not data:
+                if data := f.read(1048576):
+                    sha1.update(data)
+                else:
                     break
-                sha1.update(data)
         if sha1.hexdigest() == sha1_hash:
             return fname
     # Download
