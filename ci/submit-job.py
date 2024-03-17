@@ -45,8 +45,8 @@ job_type_info = {
 # Create push job types for GPUs with same definitions
 for job_type in list(job_type_info.keys()):
     if job_type.startswith('ci-gpu'):
-        job_type_info[job_type+'-push'] = job_type_info[job_type]
-        job_type_info[job_type+'-release'] = job_type_info[job_type]
+        job_type_info[f'{job_type}-push'] = job_type_info[job_type]
+        job_type_info[f'{job_type}-release'] = job_type_info[job_type]
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -67,9 +67,12 @@ parser.add_argument('--saved-output',
                     help='output to be saved, relative to working directory. '
                          'it can be either a single file or a directory',
                     type=str, default='None')
-parser.add_argument('--save-path',
-                    help='s3 path where files are saved.',
-                    type=str, default='batch/temp/{}'.format(datetime.now().isoformat()))
+parser.add_argument(
+    '--save-path',
+    help='s3 path where files are saved.',
+    type=str,
+    default=f'batch/temp/{datetime.now().isoformat()}',
+)
 parser.add_argument('--command', help='command to run', type=str,
                     default='git rev-parse HEAD | tee stdout.log')
 parser.add_argument('--remote',
@@ -108,7 +111,7 @@ def printLogs(logGroupName, logStreamName, startTime):
         for event in logEvents['events']:
             lastTimestamp = event['timestamp']
             timestamp = datetime.utcfromtimestamp(lastTimestamp / 1000.0).isoformat()
-            print('[{}] {}'.format((timestamp + '.000')[:23] + 'Z', event['message']))
+            print(f"[{f'{timestamp}.000'[:23]}Z] {event['message']}")
 
         nextToken = logEvents['nextForwardToken']
         if nextToken and kwargs.get('nextToken') != nextToken:
@@ -119,8 +122,7 @@ def printLogs(logGroupName, logStreamName, startTime):
 
 
 def nowInMillis():
-    endTime = int(total_seconds(datetime.utcnow() - datetime(1970, 1, 1))) * 1000
-    return endTime
+    return int(total_seconds(datetime.utcnow() - datetime(1970, 1, 1))) * 1000
 
 
 def main():
@@ -133,10 +135,7 @@ def main():
     jobDefinition = job_type_info[jobType]['job_definition']
     wait = args.wait
 
-    safe_to_use_script = 'False'
-    if args.safe_to_use_script:
-        safe_to_use_script = 'True'
-
+    safe_to_use_script = 'True' if args.safe_to_use_script else 'False'
     parameters = {
         'SOURCE_REF': args.source_ref,
         'WORK_DIR': args.work_dir,
@@ -164,7 +163,7 @@ def main():
         f.write(f'Batch_JobID={jobId}\n')
     os.environ['batch_jobid'] = jobId
 
-    print('Submitted job [{} - {}] to the job queue [{}]'.format(jobName, jobId, jobQueue))
+    print(f'Submitted job [{jobName} - {jobId}] to the job queue [{jobQueue}]')
 
     spinner = 0
     running = False
@@ -175,20 +174,20 @@ def main():
         time.sleep(random.randint(5, 10))
         describeJobsResponse = batch.describe_jobs(jobs=[jobId])
         status = describeJobsResponse['jobs'][0]['status']
-        if status == 'SUCCEEDED' or status == 'FAILED':
+        if status in ['SUCCEEDED', 'FAILED']:
             if logStreamName:
                 startTime = printLogs(logGroupName, logStreamName, startTime) + 1
             print('=' * 80)
-            print('Job [{} - {}] {}'.format(jobName, jobId, status))
+            print(f'Job [{jobName} - {jobId}] {status}')
             sys.exit(status == 'FAILED')
 
         elif status == 'RUNNING':
             logStreamName = describeJobsResponse['jobs'][0]['container']['logStreamName']
             if not running:
                 running = True
-                print('\rJob [{}, {}] is RUNNING.'.format(jobName, jobId))
+                print(f'\rJob [{jobName}, {jobId}] is RUNNING.')
                 if logStreamName:
-                    print('Output [{}]:\n {}'.format(logStreamName, '=' * 80))
+                    print(f"Output [{logStreamName}]:\n {'=' * 80}")
             if logStreamName:
                 startTime = printLogs(logGroupName, logStreamName, startTime) + 1
         elif status not in status_set:
